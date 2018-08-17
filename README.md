@@ -8,7 +8,7 @@ An implementation of paper [Polylingual Topic Models](http://www.aclweb.org/anth
 ### python setup.py install
 
 ## Description
-### A cython implementation of poly-lingual lda. Here, we refer to [lda project](https://github.com/lda-project/lda/blob/develop/README.rst).
+### A cython implementation of poly-lingual lda. Here, we refer to [lda project](https://github.com/lda-project/lda).
 ### Fit, transform, fit_transform functions are implemented followed sklearn code style.  
 ### We support standard lda when only one kind corpus is input.
 ### Input data should be a BOW matrix. 
