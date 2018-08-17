@@ -1,6 +1,6 @@
 # polylingual-lda-cython-master
 
-.[Polylingual Topic Models].(http://www.aclweb.org/anthology/D09-1092)
+An implementation of paper [Polylingual Topic Models](http://www.aclweb.org/anthology/D09-1092)
 
 
 ## Install 
@@ -8,7 +8,7 @@
 ### python setup.py install
 
 ## Description
-### A cython implementation of poly-lingual lda. Here, we refer to .[lda project].(https://github.com/lda-project/lda/blob/develop/README.rst).
+### A cython implementation of poly-lingual lda. Here, we refer to [lda project](https://github.com/lda-project/lda/blob/develop/README.rst).
 ### Fit, transform, fit_transform functions are implemented followed sklearn code style.  
 ### We support standard lda when only one kind corpus is input.
 ### Input data should be a BOW matrix. 
@@ -21,3 +21,6 @@
 ### Throw BOW matrixes into the model and train.
 ### done.
 
+
+## Acknowledge
+### If you find some thing wrong in my code, please contact me. My email is ustcaimc@gmail.com.
