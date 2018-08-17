@@ -4,22 +4,22 @@ An implementation of paper [Polylingual Topic Models](http://www.aclweb.org/anth
 
 
 ## Install 
-### python setup.py build
-### python setup.py install
+1. python setup.py build
+2. python setup.py install
 
 ## Description
-### A cython implementation of poly-lingual lda. Here, we refer to [lda project](https://github.com/lda-project/lda).
-### Fit, transform, fit_transform functions are implemented followed sklearn code style.  
-### We support standard lda when only one kind corpus is input.
-### Input data should be a BOW matrix. 
-### If you want to see some output, you should instantiate a log object. 
+1. A cython implementation of poly-lingual lda. Here, we refer to [lda project](https://github.com/lda-project/lda).
+2. Fit, transform, fit_transform functions are implemented followed sklearn code style.  
+3. We support standard lda when only one kind corpus is input.
+4. Input data should be a BOW matrix. 
+5. If you want to see some output, you should instantiate a log object. 
 
 
 ## Example
-### Instantiate a log object.
-### Make BOW matrixes of different lingual corpus.
-### Throw BOW matrixes into the model and train.
-### done.
+1. Instantiate a log object.
+2. Make BOW matrixes of different lingual corpus.
+3. Throw BOW matrixes into the model and train.
+4. done.
 
 
 ## Acknowledge
