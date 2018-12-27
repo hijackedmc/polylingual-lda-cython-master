@@ -151,17 +151,7 @@ cpdef double _topic_term_loglikelihood(int[:, :] ndz, int[:, :] nzw, int[:] nz, 
                     ll += lgamma(eta + nzw[k, w]) - lgamma_eta
         return ll
 
-cpdef double _poly_loglikelihood(int[:, :, :] nzw, int[:, :] ndz, int[:,:] nz, int[:] nd, double alpha, double eta) :
-    """ Standard LDA log likelihood. """
-    cdef int languages = nzw.shape[0]
-    ll = _doc_topic_loglikelihood(ndz, nd, alpha)
 
-    # with nogil: 如果加上， 会爆出类似的错误
-    for language in range(languages):
-        nzw_, nz_, eta_ = nzw[language, :, :], nz[language, :], eta  #这里的eta可以选择不同，只是代码里写的相同
-        # print nzw_, nz_, eta_
-        ll += _topic_term_loglikelihood(ndz, nzw_, nz_, eta_)
-    return ll
 
 def matrix_to_lists(doc_word):
     """Convert a (sparse) matrix of counts into arrays of word and doc indices
@@ -258,22 +248,35 @@ class PolyLDA(object):
         if len(logger.handlers) == 1 and isinstance(logger.handlers[0], logging.NullHandler):
             logging.basicConfig(level=logging.INFO)
 
+    def _find_dimention(self, X):
+        for i in xrange(1000000):
+            try:
+                X = X[0]
+            except:
+                return i
+
     def _reshape_X(self, X):
         """
         Make sure the X is 3D when training.
         :param X: training data.
         :return: reshaped X.
         """
-        if not isinstance(X, np.ndarray):
-            X = np.asarray(X)
-        if len(X.shape)==1:
-            X.shape = (1,1,X.shape[0])
-            return X
-        elif len(X.shape)==2:
-            X.shape = (1, X.shape[0], X.shape[1])
-            return X
-        elif len(X.shape)==3:
-            return X
+        dimention = self._find_dimention(X)
+        logger.info(dimention)
+        if dimention!=3:
+            if not isinstance(X, np.ndarray):
+                X = np.asarray(X)
+            if len(X.shape)==1:
+                X.shape = (1,1,X.shape[0])
+                return X
+            elif len(X.shape)==2:
+                X.shape = (1, X.shape[0], X.shape[1])
+                return X
+        else:
+            temp = []
+            for X_ in X:
+                temp.append(X_ if isinstance(X_, np.ndarray) else np.asarray(X_))
+            return temp
         raise ValueError("X shape should be 1D, 2D or 3D.")
 
     def fit(self, X, y=None):
@@ -424,9 +427,9 @@ class PolyLDA(object):
         ll = self.loglikelihood()
         logger.info("round: <{}> log likelihood: {:.0f}".format(self.n_iter - 1, ll))
         # note: numpy /= is integer division
-        self.components_ = (self.nzw_ + self.eta).astype(float)
-        self.components_ = np.asarray(
-            [(components_/np.sum(components_, axis=1)[:, np.newaxis]).tolist() for components_ in self.components_])
+        self.components_ = [(nzw_i + self.eta).astype(float) for nzw_i in self.nzw_]
+        self.components_ = \
+            [np.asarray((components_/np.sum(components_, axis=1)[:, np.newaxis]).tolist()) for components_ in self.components_]
         self.topic_word_ = self.components_
         self.doc_topic_ = (self.ndz_ + self.alpha).astype(float)
         self.doc_topic_ /= np.sum(self.doc_topic_, axis=1)[:, np.newaxis]
@@ -438,7 +441,8 @@ class PolyLDA(object):
         return self
 
     def _initialize(self, X):
-        L, D, W = X.shape
+        # L, D, W = X.shape
+        L, D = len(X), len(X[0])
         logger.info("n_languages: {}".format(L))
 
         n_topics = self.n_topics
@@ -456,7 +460,7 @@ class PolyLDA(object):
             nz_.append(nz_i_)
             nzw_.append(nzw_i_)
         self.loglikelihoods_ = []
-        self.nzw_, self.nz_ = np.asarray(self.nzw_), np.asarray(self.nz_)
+        # self.nzw_, self.nz_ = np.asarray(self.nzw_), np.asarray(self.nz_)
 
     def _initialize_single_language(self, X):
         D, W = X.shape
@@ -483,7 +487,7 @@ class PolyLDA(object):
             ndz_[d, z_new] += 1
             nzw_[z_new, w] += 1
             nz_[z_new] += 1
-        return WS, DS, ZS, nzw_, nz_
+        return WS, DS, ZS, np.asarray(nzw_), np.asarray(nz_)
 
     def loglikelihood(self):
         """Calculate complete log likelihood, log p(w,z)
@@ -494,7 +498,20 @@ class PolyLDA(object):
         eta = self.eta
         nzw, ndz, nz = self.nzw_, self.ndz_, self.nz_
         nd = np.sum(ndz, axis=1).astype(np.intc)
-        return _poly_loglikelihood(nzw, ndz, nz, nd, alpha, eta)
+        return self._poly_loglikelihood(nzw, ndz, nz, nd, alpha, eta)
+
+    def _poly_loglikelihood(self, nzw, ndz, nz, nd, alpha, eta) :
+        """ Standard LDA log likelihood. """
+        languages = len(nzw)
+        ll = _doc_topic_loglikelihood(ndz, nd, alpha)
+
+        # with nogil: 如果加上， 会爆出类似的错误
+        for language in range(languages):
+            # nzw_, nz_, eta_ = nzw[language, :, :], nz[language, :], eta  #这里的eta可以选择不同，只是代码里写的相同
+            nzw_, nz_, eta_ = nzw[language], nz[language], eta  #这里的eta可以选择不同，只是代码里写的相同
+            # print nzw_, nz_, eta_
+            ll += _topic_term_loglikelihood(ndz, nzw_, nz_, eta_)
+        return ll
 
     def _sample_topics(self, rands, WS, DS, ZS, nzw_, ndz_, nz_):
         """Samples all topic assignments. Called once per iteration."""
@@ -502,3 +519,6 @@ class PolyLDA(object):
         alpha = np.repeat(self.alpha, n_topics).astype(np.float64)
         eta = np.repeat(self.eta, vocab_size).astype(np.float64)
         _sample_topics(WS, DS, ZS, nzw_, ndz_, nz_, alpha, eta, rands)
+
+
+
