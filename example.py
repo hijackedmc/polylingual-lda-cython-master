@@ -1,27 +1,5 @@
 # coding=utf-8
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-#
-# Copyright (C) 2017-2087 TIC-Recruit Project
-# @Author  : Chao Ma <machao13@baidu.com>
-# @Time    : 2018/4/24 22:02
-# @File    : iterator_in_deepth.py
-# @Software: PyCharm
-"""
-__file__
-    iterator_in_deepth.py
 
-__description__
-
-    todo
-__author__
-
-    Chao Ma <machao13@baidu.com>
-
-__date__
-
-    2018/4/24 22:02
-"""
 import log
 import jieba
 import gensim
@@ -65,6 +43,7 @@ Corpus_matrix_2 = gensim.matutils.corpus2dense(Corpus_2, len(dct2)).T.astype(np.
 
 if __name__=="__main__":
     from polylda import PolyLDA
-    polylda = PolyLDA(n_topics=100,n_iter=100, languages=2)
+    polylda = PolyLDA(n_topics=100,n_iter=1000, languages=2)
     a = np.random.randint(0, 100, 900).reshape(30, 30)
     b = polylda.fit_transform([Corpus_matrix_1,Corpus_matrix_2])
+    # bb = polylda.transform()
