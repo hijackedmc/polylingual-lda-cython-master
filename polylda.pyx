@@ -106,8 +106,62 @@ def _sample_topics(int[:] WS, int[:] DS, int[:] ZS, int[:, :] nzw, int[:, :] ndz
 
         free(dist_sum)
 
+def _sample_topics_inference(int[:] WS, int[:] DS, int[:] ZS, int[:, :] nzw, int[:, :] ndz, int[:] nz,
+                   double[:] alpha, double[:] eta, double[:] rands):
+    """ Infer doc-topic distribution of new document.
+    :param WS:
+    :param DS:
+    :param ZS:
+    :param nzw: component is a constant matrix.
+    :param ndz:
+    :param nz:
+    :param alpha:
+    :param eta:
+    :param rands:
+    :return:
+    """
+    cdef int i, k, w, d, z, z_new
+    cdef double r, dist_cum
+    cdef int N = WS.shape[0]
+    cdef int n_rand = rands.shape[0]
+    cdef int n_topics = nz.shape[0]
+    cdef double eta_sum = 0
+    cdef double* dist_sum = <double*> malloc(n_topics * sizeof(double))
+    if dist_sum is NULL:
+        raise MemoryError("Could not allocate memory during sampling.")
+    with nogil:
+        for i in range(eta.shape[0]):
+            eta_sum += eta[i]
+
+        for i in range(N):
+            w = WS[i]
+            d = DS[i]
+            z = ZS[i]
+
+            dec(ndz[d, z])
+            dec(nz[z])
+
+            dist_cum = 0
+            for k in range(n_topics):
+                # eta is a double so cdivision yields a double
+                dist_cum += nzw[k, w] * (ndz[d, k] + alpha[k])
+                # nd[d] + alpha_sum 是一个常量，所以在这里可以省略， 但是nz[k]不是一个常量。
+                # 比如 nd[1] 就是doc d的长度减1， 但是nz[1]就会一直发生变动。
+                dist_sum[k] = dist_cum
+
+            # 顺序取一个随机数， 并且把这个随机数扩大到 dist_cum范围。
+            r = rands[i % n_rand] * dist_cum  # dist_cum == dist_sum[-1]
+            z_new = searchsorted(dist_sum, n_topics, r)
+
+            ZS[i] = z_new
+            inc(ndz[d, z_new])
+            inc(nz[z_new])
+
+        free(dist_sum)
+
 cpdef double _doc_topic_loglikelihood(int[:, :] ndz, int[:] nd, double alpha) nogil:
-    """ Standard LDA log likelihood. """
+    """ Standard LDA log likelihood. P(Z|alpha).
+    """
     cdef int k, d
     cdef int D = ndz.shape[0]
     cdef int n_topics = ndz.shape[1]
@@ -129,7 +183,7 @@ cpdef double _doc_topic_loglikelihood(int[:, :] ndz, int[:] nd, double alpha) no
         return ll
 
 cpdef double _topic_term_loglikelihood(int[:, :] ndz, int[:, :] nzw, int[:] nz, double eta) nogil:
-    """ Standard LDA log likelihood. """
+    """ Standard LDA log likelihood. P(W|Z,beta)"""
     cdef int k, d
     cdef int D = ndz.shape[0]
     cdef int n_topics = ndz.shape[1]
@@ -151,8 +205,6 @@ cpdef double _topic_term_loglikelihood(int[:, :] ndz, int[:, :] nzw, int[:] nz, 
                     ll += lgamma(eta + nzw[k, w]) - lgamma_eta
         return ll
 
-
-
 def matrix_to_lists(doc_word):
     """Convert a (sparse) matrix of counts into arrays of word and doc indices
 
@@ -166,7 +218,6 @@ def matrix_to_lists(doc_word):
     (WS, DS) : tuple of two arrays
         WS[k] contains the kth word in the corpus
         DS[k] contains the document index for the kth word
-
     """
     if np.count_nonzero(doc_word.sum(axis=1)) != doc_word.shape[0]:
         logger.warning("all zero row in document-term matrix found")
@@ -248,12 +299,38 @@ class PolyLDA(object):
         if len(logger.handlers) == 1 and isinstance(logger.handlers[0], logging.NullHandler):
             logging.basicConfig(level=logging.INFO)
 
+    def _check_sparse(self, X):
+        sparse = True
+        try:
+            X = X.copy().tolil()
+        except AttributeError:
+            sparse = False
+        return sparse
+
+    def _check_num(self, X):
+        is_num = True
+        try:
+            float(X)
+        except:
+            is_num = False
+        return is_num
+
+    def _check_empty_list(self, X):
+        if (type(X) is list) and (len(X)==0):
+            return True
+        return False
+
     def _find_dimention(self, X):
-        for i in xrange(1000000):
-            try:
-                X = X[0]
-            except:
-                return i
+        if self._check_sparse(X):
+            return len(X.shape)
+        elif isinstance(X, np.ndarray):
+            return len(X.shape)
+        elif self._check_num(X):
+            return 0
+        elif self._check_empty_list(X):
+            return 1
+        else:
+            return self._find_dimention(X[0]) + 1
 
     def _reshape_X(self, X):
         """
@@ -275,7 +352,11 @@ class PolyLDA(object):
         else:
             temp = []
             for X_ in X:
-                temp.append(X_ if isinstance(X_, np.ndarray) else np.asarray(X_))
+                if self._check_sparse(X_) or isinstance(X_, np.ndarray):
+                    temp.append(X_)
+                else:
+                    temp.append(np.asarray(X_))
+            logger.debug("reshape success")
             return temp
         raise ValueError("X shape should be 1D, 2D or 3D.")
 
@@ -318,7 +399,11 @@ class PolyLDA(object):
         return self.doc_topic_
 
     def transform(self, X, max_iter=20, tol=1e-16, which_language=0, output_epoch=10):
-        """Transform the data X according to previously fitted model
+        """Transform the data X according to previously fitted model.
+
+        In this place, we can't calc ll(loglikelihood) because the statistical magnitude needed are missed when using
+        iterate pesudo-count method.
+        But, when we use gibbs sampling method to infer doc-topic distribution, ll can be calced.
 
         Parameters
         ----------
@@ -342,11 +427,12 @@ class PolyLDA(object):
 
         """
         assert which_language in range(self.languages), "Wrong language type."
-        if not isinstance(X, np.ndarray):
+        if isinstance(X, list):
             X = np.asarray(X)
             # in case user passes a (non-sparse) array of shape (n_features,)
             # turn it into an array of shape (1, n_features)
-        X = np.atleast_2d(X)
+        if isinstance(X, np.ndarray):
+            X = np.atleast_2d(X)
         doc_topic = np.empty((X.shape[0], self.n_topics))
         WS, DS = matrix_to_lists(X)
         # TODO: this loop is parallelizable
@@ -357,6 +443,10 @@ class PolyLDA(object):
             doc_topic[d] = self._transform_single(WS[DS == d], max_iter, tol, which_language)
             i += 1
         return doc_topic
+
+    def _transform_single_gibbs(self):
+        # TODO: Transform a single document according to the previously fit model with gibbs sampling.
+        pass
 
     def _transform_single(self, doc_words, max_iter, tol, which_language):
         """Transform a single document according to the previously fit model
@@ -409,6 +499,7 @@ class PolyLDA(object):
         """
         random_state = check_random_state(self.random_state)
         rands = self._rands.copy()
+        logger.debug("begine initialize")
         self._initialize(X)
         # WS, DS, ZS, nzw_, nz_ = self._initialize(X)
         # ndz_ = self.ndz_
@@ -442,7 +533,9 @@ class PolyLDA(object):
 
     def _initialize(self, X):
         # L, D, W = X.shape
-        L, D = len(X), len(X[0])
+        logger.debug(len(X))
+        logger.debug(X[0].shape)
+        L, D = len(X), X[0].shape[0]
         logger.info("n_languages: {}".format(L))
 
         n_topics = self.n_topics
