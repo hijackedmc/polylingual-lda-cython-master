@@ -48,13 +48,7 @@ def init_log(log_fold=None, log_name=None, level=logging.INFO, when="D", backup=
     """
     log_path = log_fold + log_name
     formatter = logging.Formatter(format, datefmt)
-    # 获得对应log_name 的log实例， 如果没有log_name的话， 会导致多个模块的log写入同样的内容
     logger = logging.getLogger(log_name)
-    # 如果 logger.handlers列表为空， 则添加， 否则，直接去写日志； 如果不添加这句， 反复运行server， 就会有多个logger实例， 会导致同一个日志中写入了多条
-    """ 之前同样的操作却没有产生好的结果是因为， 我在后面纪录日志的时候使用的是 logging.info ， 而不是log函数中的 logger 实例，
-    我自己理解的是，直接使用logging并没有使用这里的实例， 所以写入不了数据， 除非将log_name设置为空， 这样的话， 在log函数中实例出来的logger名字
-    和直接使用logging模块应该是对应这一个logger实例。     
-    """
     if not logger.handlers:
         logger.setLevel(level)
 
@@ -62,13 +56,10 @@ def init_log(log_fold=None, log_name=None, level=logging.INFO, when="D", backup=
         if not os.path.isdir(dir):
             os.makedirs(dir)
 
-        ####   加入一个 console端的输出  #########
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
         console.setFormatter(formatter)
         logger.addHandler(console)
-    #         logging.getLogger().addHandler(console)
-        ########################################
 
         now_ = '_'+datetime.datetime.now().strftime('%Y-%m-%d')
         handler = logging.handlers.TimedRotatingFileHandler(log_path+ now_ + ".log",
